@@ -189,6 +189,9 @@ class SessionSource:
     auto_thread_created: bool = False
     auto_thread_initial_name: Optional[str] = None
 
+    # Durable control-plane metadata bound to this chat or thread lane.
+    context_anchor: Optional[Dict[str, Any]] = None
+
     # Internal, wire-INVISIBLE trust signal: True when this event was delivered
     # to the gateway over the per-instance-authenticated relay WebSocket (the
     # Team Gateway connector). The connector authenticates the gateway's socket
@@ -266,6 +269,8 @@ class SessionSource:
             d["auto_thread_created"] = True
         if self.auto_thread_initial_name:
             d["auto_thread_initial_name"] = self.auto_thread_initial_name
+        if self.context_anchor:
+            d["context_anchor"] = self.context_anchor
         return d
 
     @classmethod
@@ -289,6 +294,11 @@ class SessionSource:
             profile=data.get("profile"),
             auto_thread_created=bool(data.get("auto_thread_created", False)),
             auto_thread_initial_name=data.get("auto_thread_initial_name"),
+            context_anchor=(
+                data.get("context_anchor")
+                if isinstance(data.get("context_anchor"), dict)
+                else None
+            ),
         )
     
 
@@ -467,6 +477,25 @@ def build_session_context_prompt(
             "Matrix room/thread only. Do not assume unresolved references are "
             "about other Matrix rooms or projects unless the user explicitly says so."
         )
+
+    context_anchor = context.source.context_anchor if isinstance(context.source.context_anchor, dict) else None
+    if context_anchor:
+        anchor_type = str(context_anchor.get("type") or "").strip()
+        anchor_id = str(context_anchor.get("id") or "").strip()
+        if anchor_type and anchor_id:
+            lines.append("")
+            lines.append("**Bound Context Anchor:**")
+            lines.append(f"  - Type: `{anchor_type}`")
+            lines.append(f"  - ID: `{anchor_id}`")
+            title = str(context_anchor.get("title") or "").strip()
+            if title:
+                lines.append(f"  - Title: {title}")
+            url = str(context_anchor.get("url") or "").strip()
+            if url:
+                lines.append(f"  - URL: {url}")
+            source_label = str(context_anchor.get("source") or "").strip()
+            if source_label:
+                lines.append(f"  - Binding source: {source_label}")
 
     # User identity.
     # In shared multi-user sessions (shared threads OR shared non-thread groups
