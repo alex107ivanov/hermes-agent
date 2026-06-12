@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any
 from urllib.parse import urlparse
@@ -18,6 +19,13 @@ def _clean(value: Any, *, limit: int = 160) -> str:
     # Metadata is for aggregation keys only; keep it compact and printable.
     text = "".join(ch if 32 <= ord(ch) < 127 else "_" for ch in text)
     return text[:limit]
+
+
+def _digest(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def is_litellm_proxy(base_url: Any) -> bool:
@@ -59,20 +67,17 @@ def build_litellm_request_metadata(
         getattr(agent, "platform", "") or _session_env("HERMES_SESSION_PLATFORM")
     )
     cron_active = _truthy(os.getenv("HERMES_CRON_SESSION"))
-    cron_job_id = _clean(
+    cron_job_hash = _digest(
         _session_env("HERMES_CRON_JOB_ID") or os.getenv("HERMES_CRON_JOB_ID")
     )
-    cron_job_name = _clean(
-        _session_env("HERMES_CRON_JOB_NAME") or os.getenv("HERMES_CRON_JOB_NAME")
-    )
-    parent_session_id = _clean(getattr(agent, "_parent_session_id", ""))
+    parent_session_hash = _digest(getattr(agent, "_parent_session_id", ""))
 
     if cron_active:
         source = "cron"
-        source_tag = f"cron:{cron_job_id}" if cron_job_id else "cron"
+        source_tag = f"cron:{cron_job_hash}" if cron_job_hash else "cron"
     else:
         source = platform or _clean(os.getenv("HERMES_SESSION_SOURCE")) or "cli"
-        if parent_session_id:
+        if parent_session_hash:
             source_tag = f"delegate:{source}"
         elif source in {
             "slack",
@@ -95,13 +100,14 @@ def build_litellm_request_metadata(
     }
 
     for key, value in {
-        "hermes_session_id": getattr(agent, "session_id", ""),
-        "hermes_parent_session_id": parent_session_id,
+        "hermes_session_hash": _digest(getattr(agent, "session_id", "")),
+        "hermes_parent_session_hash": parent_session_hash,
         "hermes_provider": getattr(agent, "provider", ""),
         "hermes_profile": os.getenv("HERMES_PROFILE", ""),
-        "hermes_cron_job_id": cron_job_id,
-        "hermes_cron_job_name": cron_job_name,
-        "hermes_gateway_session_key": getattr(agent, "_gateway_session_key", ""),
+        "hermes_cron_job_hash": cron_job_hash,
+        "hermes_gateway_session_hash": _digest(
+            getattr(agent, "_gateway_session_key", "")
+        ),
     }.items():
         cleaned = _clean(value)
         if cleaned:
