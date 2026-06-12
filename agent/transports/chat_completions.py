@@ -115,6 +115,25 @@ def _merge_extra_body(base: dict[str, Any], additions: dict[str, Any] | None) ->
             base[key] = value
 
 
+def _apply_request_overrides(
+    api_kwargs: dict[str, Any], extra_body: dict[str, Any], overrides: dict[str, Any] | None
+) -> bool:
+    """Apply caller overrides; return True when extra_body was replaced."""
+    replaced_extra_body = False
+    if not overrides:
+        return replaced_extra_body
+    for key, value in overrides.items():
+        if key == "extra_body" and isinstance(value, dict):
+            _merge_extra_body(extra_body, value)
+        elif key == "extra_body":
+            api_kwargs[key] = value
+            replaced_extra_body = True
+            extra_body.clear()
+        else:
+            api_kwargs[key] = value
+    return replaced_extra_body
+
+
 def _model_consumes_thought_signature(model: Any) -> bool:
     """True when the outgoing model is a Gemini family model that requires
     ``extra_content`` (thought_signature) to be replayed on tool calls.
@@ -468,15 +487,13 @@ class ChatCompletionsTransport(ProviderTransport):
             api_kwargs["extra_body"] = extra_body
 
         # Request overrides last (service_tier etc.)
-        overrides = params.get("request_overrides")
-        if overrides:
-            for k, v in overrides.items():
-                if k == "extra_body" and isinstance(v, dict):
-                    _merge_extra_body(extra_body, v)
-                else:
-                    api_kwargs[k] = v
+        replaced_extra_body = _apply_request_overrides(
+            api_kwargs, extra_body, params.get("request_overrides")
+        )
 
-        if extra_body:
+        if replaced_extra_body:
+            pass
+        elif extra_body:
             api_kwargs["extra_body"] = extra_body
         else:
             api_kwargs.pop("extra_body", None)
@@ -593,15 +610,13 @@ class ChatCompletionsTransport(ProviderTransport):
             _merge_extra_body(extra_body, {"metadata": request_metadata})
 
         # Request overrides (user config)
-        overrides = params.get("request_overrides")
-        if overrides:
-            for k, v in overrides.items():
-                if k == "extra_body" and isinstance(v, dict):
-                    _merge_extra_body(extra_body, v)
-                else:
-                    api_kwargs[k] = v
+        replaced_extra_body = _apply_request_overrides(
+            api_kwargs, extra_body, params.get("request_overrides")
+        )
 
-        if extra_body:
+        if replaced_extra_body:
+            pass
+        elif extra_body:
             api_kwargs["extra_body"] = extra_body
 
         return api_kwargs

@@ -52,6 +52,16 @@ def _session_env(name: str, default: str = "") -> str:
         return os.getenv(name, default)
 
 
+def _context_env(name: str, default: str = "") -> str:
+    """Read only task-local contextvars, avoiding stale process env fallback."""
+    try:
+        from gateway.session_context import get_context_env
+
+        return get_context_env(name, default)
+    except Exception:
+        return default
+
+
 def build_litellm_request_metadata(
     agent: Any, *, caller: str = "main"
 ) -> dict[str, str] | None:
@@ -66,11 +76,10 @@ def build_litellm_request_metadata(
     platform = _clean(
         getattr(agent, "platform", "") or _session_env("HERMES_SESSION_PLATFORM")
     )
-    cron_active = _truthy(os.getenv("HERMES_CRON_SESSION"))
-    cron_job_hash = _digest(
-        _session_env("HERMES_CRON_JOB_ID") or os.getenv("HERMES_CRON_JOB_ID")
-    )
+    cron_job_id = _context_env("HERMES_CRON_JOB_ID")
+    cron_job_hash = _digest(cron_job_id)
     parent_session_hash = _digest(getattr(agent, "_parent_session_id", ""))
+    cron_active = bool(cron_job_hash)
 
     if cron_active:
         source = "cron"

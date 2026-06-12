@@ -172,6 +172,16 @@ def clear_session_vars(tokens: list) -> None:
         pass
 
 
+def get_context_env(name: str, default: str = "") -> str:
+    """Read only the task-local context variable without os.environ fallback."""
+    var = _VAR_MAP.get(name)
+    if var is not None:
+        value = var.get()
+        if value is not _UNSET:
+            return value
+    return default
+
+
 def get_session_env(name: str, default: str = "") -> str:
     """Read a session context variable by its legacy ``HERMES_SESSION_*`` name.
 

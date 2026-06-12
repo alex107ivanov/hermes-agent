@@ -175,6 +175,17 @@ class TestChatCompletionsBuildKwargs:
             "existing": "kept",
         }
 
+    def test_request_override_can_replace_extra_body_with_none(self, transport):
+        msgs = [{"role": "user", "content": "Hello"}]
+        kw = transport.build_kwargs(
+            model="gpt-4o",
+            messages=msgs,
+            request_metadata={"hermes_source_tag": "cron:abc123"},
+            request_overrides={"extra_body": None},
+        )
+        assert "extra_body" in kw
+        assert kw["extra_body"] is None
+
     def test_developer_role_swap(self, transport):
         msgs = [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "Hi"}]
         kw = transport.build_kwargs(model="gpt-5.4", messages=msgs, model_lower="gpt-5.4")
