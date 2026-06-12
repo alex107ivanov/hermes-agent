@@ -99,6 +99,22 @@ def _is_gemini_openai_compat_base_url(base_url: Any) -> bool:
     return normalized.endswith("/openai")
 
 
+def _merge_extra_body(base: dict[str, Any], additions: dict[str, Any] | None) -> None:
+    """Merge extra_body dictionaries, preserving nested metadata keys."""
+    if not additions:
+        return
+    for key, value in additions.items():
+        if key == "metadata" and isinstance(value, dict):
+            existing = base.get("metadata")
+            merged: dict[str, Any] = {}
+            if isinstance(existing, dict):
+                merged.update(existing)
+            merged.update(value)
+            base["metadata"] = merged
+        else:
+            base[key] = value
+
+
 def _model_consumes_thought_signature(model: Any) -> bool:
     """True when the outgoing model is a Gemini family model that requires
     ``extra_content`` (thought_signature) to be replayed on tool calls.
@@ -442,8 +458,11 @@ class ChatCompletionsTransport(ProviderTransport):
 
         # Merge any pre-built extra_body additions
         additions = params.get("extra_body_additions")
-        if additions:
-            extra_body.update(additions)
+        _merge_extra_body(extra_body, additions)
+
+        request_metadata = params.get("request_metadata")
+        if request_metadata:
+            _merge_extra_body(extra_body, {"metadata": request_metadata})
 
         if extra_body:
             api_kwargs["extra_body"] = extra_body
@@ -451,7 +470,16 @@ class ChatCompletionsTransport(ProviderTransport):
         # Request overrides last (service_tier etc.)
         overrides = params.get("request_overrides")
         if overrides:
-            api_kwargs.update(overrides)
+            for k, v in overrides.items():
+                if k == "extra_body" and isinstance(v, dict):
+                    _merge_extra_body(extra_body, v)
+                else:
+                    api_kwargs[k] = v
+
+        if extra_body:
+            api_kwargs["extra_body"] = extra_body
+        else:
+            api_kwargs.pop("extra_body", None)
 
         return api_kwargs
 
@@ -558,15 +586,18 @@ class ChatCompletionsTransport(ProviderTransport):
 
         # Merge any pre-built extra_body additions from the caller
         additions = params.get("extra_body_additions")
-        if additions:
-            extra_body.update(additions)
+        _merge_extra_body(extra_body, additions)
+
+        request_metadata = params.get("request_metadata")
+        if request_metadata:
+            _merge_extra_body(extra_body, {"metadata": request_metadata})
 
         # Request overrides (user config)
         overrides = params.get("request_overrides")
         if overrides:
             for k, v in overrides.items():
                 if k == "extra_body" and isinstance(v, dict):
-                    extra_body.update(v)
+                    _merge_extra_body(extra_body, v)
                 else:
                     api_kwargs[k] = v
 
