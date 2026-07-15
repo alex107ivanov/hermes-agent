@@ -71,7 +71,7 @@ class TestCliPathFiresHooks:
 
         with patch("hermes_cli.plugins.invoke_hook", side_effect=fake_invoke_hook):
             result = check_all_command_guards(
-                "rm -rf /tmp/test-hook", "local", approval_callback=cb,
+                "rm -rf /workspace/test-hook", "local", approval_callback=cb,
             )
 
         assert result["approved"] is True
@@ -81,7 +81,7 @@ class TestCliPathFiresHooks:
         assert "post_approval_response" in hook_names
 
         pre_kwargs = next(kw for name, kw in captured if name == "pre_approval_request")
-        assert pre_kwargs["command"] == "rm -rf /tmp/test-hook"
+        assert pre_kwargs["command"] == "rm -rf /workspace/test-hook"
         assert pre_kwargs["surface"] == "cli"
         assert pre_kwargs["session_key"] == isolated_session
         assert isinstance(pre_kwargs["pattern_keys"], list)
@@ -91,7 +91,7 @@ class TestCliPathFiresHooks:
         post_kwargs = next(kw for name, kw in captured if name == "post_approval_response")
         assert post_kwargs["choice"] == "once"
         assert post_kwargs["surface"] == "cli"
-        assert post_kwargs["command"] == "rm -rf /tmp/test-hook"
+        assert post_kwargs["command"] == "rm -rf /workspace/test-hook"
 
     def test_deny_reported_to_post_hook(self, isolated_session, monkeypatch):
         monkeypatch.setenv("HERMES_INTERACTIVE", "1")
@@ -110,7 +110,7 @@ class TestCliPathFiresHooks:
 
         with patch("hermes_cli.plugins.invoke_hook", side_effect=fake_invoke_hook):
             result = check_all_command_guards(
-                "rm -rf /tmp/test-deny", "local", approval_callback=cb,
+                "rm -rf /workspace/test-deny", "local", approval_callback=cb,
             )
 
         assert result["approved"] is False
@@ -136,7 +136,7 @@ class TestCliPathFiresHooks:
 
         with patch("hermes_cli.plugins.invoke_hook", side_effect=boom):
             result = check_all_command_guards(
-                "rm -rf /tmp/test-crash", "local", approval_callback=cb,
+                "rm -rf /workspace/test-crash", "local", approval_callback=cb,
             )
 
         # User's approval was still honored despite the plugin crashing
@@ -148,5 +148,4 @@ class TestGatewayPathFiresHooks:
     gateway notify callback is registered. The agent thread blocks on the
     approval event until resolve_gateway_approval() is called from another
     thread."""
-
 

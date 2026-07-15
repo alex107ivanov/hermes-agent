@@ -228,7 +228,7 @@ class TestAlwaysVisibility:
     def test_dangerous_only_allows_permanent(self, mock_tirith):
         os.environ["HERMES_INTERACTIVE"] = "1"
         cb = MagicMock(return_value="always")
-        result = check_all_command_guards("rm -rf /tmp/test", "local",
+        result = check_all_command_guards("rm -rf /workspace/test", "local",
                                           approval_callback=cb)
         assert result["approved"] is True
         cb.assert_called_once()
