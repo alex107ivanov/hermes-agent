@@ -1202,9 +1202,8 @@ class SessionDB:
         cannot corrupt B-tree pages under I/O pressure.
 
         PASSIVE does not truncate the WAL file — it stays at its
-        high-water mark.  WAL truncation happens in :meth:`close`
-        (TRUNCATE) and pre-VACUUM checkpoints, which run infrequently
-        under controlled conditions.
+        high-water mark.  WAL truncation happens only before explicit
+        VACUUM maintenance, where the exclusive operation is expected.
 
         Previous TRUNCATE strategy caused B-tree corruption on large
         databases (65K+ pages) due to the exclusive-lock I/O pressure
@@ -1240,17 +1239,15 @@ class SessionDB:
             pass  # Best effort — never fatal.
 
     def close(self):
-        """Close the database connection.
+        """Close without checkpointing.
 
-        Attempts a TRUNCATE WAL checkpoint first so that exiting processes
-        help shrink the WAL file.
+        Connection shutdown is used by short-lived readers and can run on
+        latency-sensitive paths. An implicit checkpoint here can wait behind
+        unrelated writers, so periodic PASSIVE checkpoints and explicit
+        pre-VACUUM maintenance own WAL cleanup instead.
         """
         with self._lock:
             if self._conn:
-                try:
-                    self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                except Exception as exc:
-                    logger.debug("WAL checkpoint (TRUNCATE) at close failed: %s", exc)
                 self._conn.close()
                 self._conn = None
 

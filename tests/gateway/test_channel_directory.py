@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from gateway.channel_directory import (
     load_directory,
     _apply_channel_aliases,
     _build_from_sessions,
+    _build_from_sessions_db,
     _build_slack,
 )
 
@@ -279,6 +281,36 @@ class TestBuildFromSessions:
         assert "Coaching Chat" in names
         assert "Coaching Chat / topic 17585" in names
         assert "Coaching Chat / topic 17587" in names
+
+    def test_state_db_reader_is_read_only(self):
+        fake_db = MagicMock()
+        fake_db.list_gateway_sessions.return_value = []
+
+        with patch("hermes_state.SessionDB", return_value=fake_db) as session_db:
+            assert _build_from_sessions_db("telegram") == []
+
+        session_db.assert_called_once_with(read_only=True)
+        fake_db.close.assert_called_once_with()
+
+    def test_async_build_offloads_session_discovery(self, tmp_path):
+        loop_thread = threading.get_ident()
+        worker_threads = []
+
+        def fake_build(_platform):
+            worker_threads.append(threading.get_ident())
+            return []
+
+        with patch(
+            "gateway.channel_directory._build_from_sessions",
+            side_effect=fake_build,
+        ), patch(
+            "gateway.channel_directory.DIRECTORY_PATH",
+            tmp_path / "channel_directory.json",
+        ):
+            asyncio.run(build_channel_directory({"telegram": object()}))
+
+        assert worker_threads
+        assert all(thread_id != loop_thread for thread_id in worker_threads)
 
 
 class TestFormatDirectoryForDisplay:
