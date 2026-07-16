@@ -6,6 +6,7 @@ from the same session and aggregate them before dispatching.
 """
 
 import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -64,7 +65,7 @@ class TestTextBatching:
         adapter = _make_adapter()
         event = _make_event("hello world")
 
-        adapter._enqueue_text_event(event)
+        await adapter._enqueue_text_event_with_topic_recovery(event)
 
         # Not dispatched yet
         adapter.handle_message.assert_not_called()
@@ -157,7 +158,7 @@ class TestTextBatching:
             ),
         )
 
-        adapter._enqueue_text_event(event)
+        await adapter._enqueue_text_event_with_topic_recovery(event)
 
         def _key(thread_id: str) -> str:
             return build_session_key(
@@ -180,6 +181,32 @@ class TestTextBatching:
         adapter.handle_message.assert_called_once()
         dispatched = adapter.handle_message.call_args[0][0]
         assert dispatched.source.thread_id == "222"
+
+    @pytest.mark.asyncio
+    async def test_dm_topic_recovery_does_not_block_event_loop(self):
+        """A contended topic-state lookup must not freeze adapter heartbeats."""
+        adapter = _make_adapter()
+        entered = threading.Event()
+        release = threading.Event()
+
+        def _recover(_source):
+            entered.set()
+            release.wait(timeout=2)
+            return "222"
+
+        adapter.set_topic_recovery_fn(_recover)
+        event = _make_event("hello from a contended topic")
+        task = asyncio.create_task(
+            adapter._enqueue_text_event_with_topic_recovery(event)
+        )
+
+        assert await asyncio.to_thread(entered.wait, 1)
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+        release.set()
+        await asyncio.wait_for(task, timeout=1)
+
+        assert event.source.thread_id == "222"
+        await asyncio.sleep(0.2)
 
     @pytest.mark.asyncio
     async def test_disconnect_cancels_pending_text_batch_without_dispatch(self):
