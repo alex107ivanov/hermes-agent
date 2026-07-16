@@ -1464,6 +1464,22 @@ class TestToolsetInjection:
 # ---------------------------------------------------------------------------
 
 class TestGracefulFallback:
+    def test_failed_connection_shuts_down_server_task(self):
+        """A failed startup must not leave a parked MCP task behind."""
+        from tools.mcp_tool import _connect_server
+
+        server = MagicMock()
+        server.start = AsyncMock(side_effect=RuntimeError("cannot connect"))
+        server.shutdown = AsyncMock()
+
+        async def run():
+            with patch("tools.mcp_tool.MCPServerTask", return_value=server):
+                with pytest.raises(RuntimeError, match="cannot connect"):
+                    await _connect_server("broken", {"url": "https://mcp.invalid"})
+
+        asyncio.run(run())
+        server.shutdown.assert_awaited_once_with()
+
     def test_mcp_unavailable_returns_empty(self):
         """When _MCP_AVAILABLE is False, discover_mcp_tools is a no-op."""
         with patch("tools.mcp_tool._MCP_AVAILABLE", False):

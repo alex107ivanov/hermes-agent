@@ -3796,7 +3796,18 @@ async def _connect_server(name: str, config: dict) -> MCPServerTask:
         Exception: on connection or initialization failure.
     """
     server = MCPServerTask(name)
-    await server.start(config)
+    try:
+        await server.start(config)
+    except BaseException:
+        try:
+            await server.shutdown()
+        except BaseException as cleanup_exc:
+            logger.debug(
+                "MCP server '%s' cleanup after failed startup raised: %s",
+                name,
+                cleanup_exc,
+            )
+        raise
     return server
 
 
