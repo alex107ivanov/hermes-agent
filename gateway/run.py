@@ -65,6 +65,48 @@ _AGENT_CACHE_MAX_SIZE = 128
 _AGENT_CACHE_IDLE_TTL_SECS = 3600.0  # evict agents idle for >1h
 _PLATFORM_CONNECT_TIMEOUT_SECS_DEFAULT = 30.0
 _ADAPTER_DISCONNECT_TIMEOUT_SECS_DEFAULT = 5.0
+
+
+def format_inactivity_warning(
+    *,
+    warning_seconds: float,
+    timeout_seconds: float,
+    session_key: str,
+    activity: Dict[str, Any],
+    model: str,
+    context_tokens: Optional[int],
+) -> str:
+    """Describe a stalled gateway turn without exposing prompt content."""
+    elapsed_mins = int(warning_seconds // 60) or 1
+    remaining_mins = int((timeout_seconds - warning_seconds) // 60) or 1
+    current_tool = activity.get("current_tool")
+    last_activity = " ".join(str(activity.get("last_activity_desc") or "unknown").split())[:160]
+    iteration = f"{activity.get('api_call_count', 0)}/{activity.get('max_iterations', 0)}"
+    if current_tool:
+        wait_state = f"Waiting on tool: {current_tool}"
+    else:
+        wait_state = "Waiting on model/API"
+    context = (
+        f"~{int(context_tokens):,} tokens"
+        if isinstance(context_tokens, (int, float)) and context_tokens > 0
+        else "context estimate unavailable"
+    )
+    timestamp = activity.get("last_activity_ts")
+    if isinstance(timestamp, (int, float)) and timestamp > 0:
+        last_at = datetime.fromtimestamp(timestamp).isoformat(timespec="seconds")
+    else:
+        last_at = "unknown"
+    return (
+        f"⚠️ No activity for {elapsed_mins} min. If the agent does not respond soon, "
+        f"it will be timed out in {remaining_mins} min.\n"
+        f"Session: {session_key or 'unknown'}\n"
+        f"{wait_state}; model: {model or 'unknown'}; context: {context}; "
+        f"iteration {iteration}.\n"
+        f"Last activity at {last_at}: {last_activity}.\n"
+        "You can continue waiting or use /reset."
+    )
+
+
 _TELEGRAM_COMMAND_MENTION_RE = re.compile(r"(?<![\w:/])/([A-Za-z0-9][A-Za-z0-9_-]*)")
 
 _TELEGRAM_NOISY_STATUS_RE = re.compile(
@@ -18701,10 +18743,11 @@ class GatewayRunner:
                     # Agent still running — check inactivity.
                     _agent_ref = agent_holder[0]
                     _idle_secs = 0.0
+                    _activity = {}
                     if _agent_ref and hasattr(_agent_ref, "get_activity_summary"):
                         try:
-                            _act = _agent_ref.get_activity_summary()
-                            _idle_secs = _act.get("seconds_since_activity", 0.0)
+                            _activity = _agent_ref.get_activity_summary()
+                            _idle_secs = _activity.get("seconds_since_activity", 0.0)
                         except Exception:
                             pass
                     # Staged warning: fire once before escalating to full timeout.
@@ -18713,15 +18756,20 @@ class GatewayRunner:
                         _warning_fired = True
                         _warn_adapter = self.adapters.get(source.platform)
                         if _warn_adapter:
-                            _elapsed_warn = int(_agent_warning // 60) or 1
-                            _remaining_mins = int((_agent_timeout - _agent_warning) // 60) or 1
                             try:
+                                _warning_text = format_inactivity_warning(
+                                    warning_seconds=_agent_warning,
+                                    timeout_seconds=_agent_timeout,
+                                    session_key=session_key,
+                                    activity=_activity,
+                                    model=str(getattr(_agent_ref, "model", "")),
+                                    context_tokens=getattr(
+                                        _agent_ref, "_last_api_context_tokens", None
+                                    ),
+                                )
                                 await _warn_adapter.send(
                                     source.chat_id,
-                                    f"⚠️ No activity for {_elapsed_warn} min. "
-                                    f"If the agent does not respond soon, it will "
-                                    f"be timed out in {_remaining_mins} min. "
-                                    f"You can continue waiting or use /reset.",
+                                    _warning_text,
                                     metadata=_status_thread_metadata,
                                 )
                             except Exception as _warn_err:
