@@ -260,6 +260,8 @@ def interruptible_api_call(agent, api_kwargs: dict):
     _codex_watchdog_enabled = agent.api_mode == "codex_responses"
     _openai_codex_backend = _is_openai_codex_backend(agent)
     _est_tokens_for_codex_watchdog = estimate_request_context_tokens(api_kwargs)
+    # The gateway warning reports only this coarse estimate, never prompt text.
+    agent._last_api_context_tokens = _est_tokens_for_codex_watchdog
     if _codex_watchdog_enabled and _openai_codex_backend:
         if _est_tokens_for_codex_watchdog > 100_000:
             _stale_timeout = max(_stale_timeout, 1200.0)

@@ -45,6 +45,8 @@ ACP_REGISTRY_MANIFEST = REPO_ROOT / "acp_registry" / "agent.json"
 
 # Auto-extracted from noreply emails + manual overrides
 AUTHOR_MAP = {
+    # Router-authored maintenance commits are reviewed and owned by this fork.
+    "hermes-agent@local": "alex107ivanov",
     "zhaolei.vc@bytedance.com": "zhaoleibd",
     "jeffrobodie@gmail.com": "jeffrobodie-glitch",
     "kyssta-exe@users.noreply.github.com": "kyssta-exe",
