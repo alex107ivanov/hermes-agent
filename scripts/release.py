@@ -68,6 +68,7 @@ AUTHOR_MAP = {
     "lengr@users.noreply.github.com": "LengR",
     "17255546+CharZhou@users.noreply.github.com": "CharZhou",
     "metalclaudbot@gmail.com": "HashClawAI",
+    "hermes-pr-hygiene@users.noreply.github.com": "alex107ivanov",
     "tonybear55665566@gmail.com": "TonyPepeBear",
     "kaspersniels@gmail.com": "nielskaspers",
     "kurobaryo@gmail.com": "kurobaryo",
